@@ -1,0 +1,6 @@
+{
+    "name": "TCU Community Repository Activity Monitor",
+    "description": "Monitors repository activities and sends notifications",
+    "iconName": "octicon bell",
+    "categories": ["automation", "continuous-integration"]
+}
