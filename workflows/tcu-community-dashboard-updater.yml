@@ -1,0 +1,91 @@
+name: TCU Community Dashboard Updater
+
+on:
+  repository_dispatch:
+    types: [repository-activity]
+
+jobs:
+  update_dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the .github repository
+      - name: Checkout .github repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.COMMUNITY_PAT }}
+      
+      # Step 2: Create activity log directory if it doesn't exist
+      - name: Create activity logs directory
+        run: |
+          mkdir -p activity-logs
+      
+      # Step 3: Update activity log
+      - name: Update activity log
+        id: update-log
+        run: |
+          # Format the entry for the activity log
+          TIMESTAMP="${{ github.event.client_payload.timestamp }}"
+          REPOSITORY="${{ github.event.client_payload.repository }}"
+          ACTOR="${{ github.event.client_payload.actor }}"
+          EVENT_TYPE="${{ github.event.client_payload.event_type }}"
+          EVENT_DESCRIPTION="${{ github.event.client_payload.event_description }}"
+          
+          # Create the activity log file if it doesn't exist
+          ACTIVITY_LOG_FILE="activity-logs/activity-log.md"
+          if [ ! -f "$ACTIVITY_LOG_FILE" ]; then
+            echo "# TCU Community Repository Activity Log" > "$ACTIVITY_LOG_FILE"
+            echo "" >> "$ACTIVITY_LOG_FILE"
+            echo "| Timestamp | Repository | User | Event | Description |" >> "$ACTIVITY_LOG_FILE"
+            echo "| --- | --- | --- | --- | --- |" >> "$ACTIVITY_LOG_FILE"
+          fi
+          
+          # Add the new activity to the log file (at the top after headers)
+          LOG_ENTRY="| $TIMESTAMP | $REPOSITORY | $ACTOR | $EVENT_TYPE | $EVENT_DESCRIPTION |"
+          sed -i "4i $LOG_ENTRY" "$ACTIVITY_LOG_FILE"
+          
+          echo "Updated activity log with new entry"
+      
+      # Step 4: Update README (main page) with recent activities
+      - name: Update main README
+        run: |
+          # Get the organization name
+          ORG_NAME="${GITHUB_REPOSITORY_OWNER}"
+          
+          # Create/update README.md file
+          README_FILE="README.md"
+          
+          # Create README if it doesn't exist or recreate it
+          echo "# TCU Community Activity Dashboard" > "$README_FILE"
+          echo "" >> "$README_FILE"
+          echo "## Recent Repository Activities" >> "$README_FILE"
+          echo "" >> "$README_FILE"
+          echo "| Timestamp | Repository | User | Activity |" >> "$README_FILE"
+          echo "| --- | --- | --- | --- |" >> "$README_FILE"
+          
+          # Add 10 most recent activities from the log to the README
+          grep -v "^#" activity-logs/activity-log.md | grep -v "^| Timestamp" | grep -v "^| ---" | head -n 10 | while read -r line; do
+            # Parse the line to extract fields
+            timestamp=$(echo "$line" | cut -d'|' -f2)
+            repo=$(echo "$line" | cut -d'|' -f3)
+            user=$(echo "$line" | cut -d'|' -f4)
+            description=$(echo "$line" | cut -d'|' -f6)
+            
+            # Add to README
+            echo "| $timestamp | $repo | $user | $description |" >> "$README_FILE"
+          done
+          
+          echo "" >> "$README_FILE"
+          echo "### About This Dashboard" >> "$README_FILE"
+          echo "" >> "$README_FILE"
+          echo "This dashboard shows the most recent activities across all repositories in the TCU community organization. For a complete history, see the [full activity log](activity-logs/activity-log.md)." >> "$README_FILE"
+          echo "" >> "$README_FILE"
+          echo "Last updated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$README_FILE"
+      
+      # Step 5: Commit and push changes
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md activity-logs/
+          git commit -m "Update community dashboard with latest activity: ${{ github.event.client_payload.event_description }}" || echo "No changes to commit"
+          git push
